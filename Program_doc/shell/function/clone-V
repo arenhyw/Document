@@ -1,0 +1,43 @@
+#!/bin/bash
+IMG_DIR=/var/lib/libvirt/images
+BASEVM=node_tedu
+
+read -p "Enter VM Name:"			VMNAME
+
+if [ -z $VMNAME  ];then
+echo    Please enter parameters
+exit
+fi
+
+if [ -e $IMG_DIR/${VMNAME}.img ]; then
+    echo "File exists."
+    exit 68
+fi
+
+echo -en "Creating Virtual Machine disk image......\t"
+qemu-img create -f qcow2 -b $IMG_DIR/.${BASEVM}.qcow2 $IMG_DIR/${VMNAME}.img 20G &> /dev/null
+echo -e "\e[32;1m[OK]\e[0m"
+cat /var/lib/libvirt/images/.node_tedu.xml > /tmp/myvm.xml
+sed -i "/<name>${BASEVM}/s/${BASEVM}/${VMNAME}/" /tmp/myvm.xml
+sed -i "/${BASEVM}\.img/s/${BASEVM}/${VMNAME}/" /tmp/myvm.xml
+echo -en "Defining new virtual machine......\t\t"
+virsh define /tmp/myvm.xml &> /dev/null
+rm -rf /tmp/myvm.xml
+echo -e "\e[32;1m[OK]\e[0m"
+
+mountpoint="/media/virtimage" 
+[ ! -d $mountpoint ]&& mkdir $mountpoint 
+echo "请稍后..." 
+if mount | grep -q "$mountpoint" ;then 
+  umount $mountpoint 
+fi 
+guestmount  -d $VMNAME -i $mountpoint 
+read -p "Enter Net Card Name:" dev 
+read -p "Enter IP Address:" IPADDR 
+read -p "Enter Subnet Mask:" PREFIX
+#判断原本网卡配置文件中是否有 IP 地址,有,就修改该 IP,没有,就添加一个新的 IP 地址 
+   echo "IPADDR=$IPADDR">> $mountpoint/etc/sysconfig/network-scripts/ifcfg-$dev 
+   echo "PREFIX=$PREFIX">> $mountpoint/etc/sysconfig/network-scripts/ifcfg-$dev 
+guestunmount $mountpoint
+mount | grep -q "$mountpoint" || sleep 5 && virsh start $VMNAME &
+	echo -e "\e[32;1m[Configuration Completed]\e[0m"
